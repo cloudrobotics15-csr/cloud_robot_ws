@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<library path="cloud_robot">
+  <class name="cloud_robot/DiffDriveHW"
+         type="cloud_robot::DiffDriveHW"
+         base_class_type="hardware_interface::SystemInterface"/>
+  <class name="cloud_robot/ServoHW"
+         type="cloud_robot::ServoHW"
+         base_class_type="hardware_interface::SystemInterface"/>
+</library>
