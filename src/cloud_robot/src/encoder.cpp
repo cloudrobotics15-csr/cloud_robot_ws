@@ -1,4 +1,3 @@
-#include "cloud_robot/encoder.hpp"
 
 namespace cloud_robot
 {
