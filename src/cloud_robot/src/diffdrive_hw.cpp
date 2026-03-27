@@ -49,6 +49,7 @@ hardware_interface::CallbackReturn DiffDriveHW::on_configure(
   RCLCPP_INFO(logger, "Connected to pigpio");
 
 
+  //  LEFT CONFIG
 TrackConfig left_cfg;
 
 left_cfg.name = "left_track";
@@ -75,10 +76,24 @@ left_cfg.max_accel =
 left_cfg.invert_direction =
   info_.hardware_parameters.at("left.invert_direction") == "true";
 
+double left_ticks_motor =
+  std::stod(info_.hardware_parameters["left.ticks_per_motor_rev"]);
+
+left_rad_per_tick_ = 2.0 * M_PI / (left_ticks_motor * left_cfg.gear_ratio);
+
+int lf_a = std::stoi(info_.hardware_parameters["left.front_enc_a"]);
+int lf_b = std::stoi(info_.hardware_parameters["left.front_enc_b"]);
+
+int lr_a = std::stoi(info_.hardware_parameters["left.rear_enc_a"]);
+int lr_b = std::stoi(info_.hardware_parameters["left.rear_enc_b"]);
+
 left_track_ = std::make_unique<Track>(left_cfg);
+lf_ = std::make_unique<Encoder>(pi_, lf_a, lf_b);
+lr_ = std::make_unique<Encoder>(pi_, lr_a, lr_b);
 
+
+//RIGHT CONFIG
 TrackConfig right_cfg;
-
 right_cfg.name = "right_track";
 right_cfg.pigpio_handle = pi_;
 
@@ -103,20 +118,39 @@ right_cfg.max_accel =
 right_cfg.invert_direction =
   info_.hardware_parameters.at("right.invert_direction") == "true";
 
+double right_ticks_motor =
+  std::stod(info_.hardware_parameters["right.ticks_per_motor_rev"]);
+
+right_rad_per_tick_ = 2.0 * M_PI / (right_ticks_motor * left_cfg.gear_ratio);
+
+
+int rf_a = std::stoi(info_.hardware_parameters["right.front_enc_a"]);
+int rf_b = std::stoi(info_.hardware_parameters["right.front_enc_b"]);
+
+int rr_a = std::stoi(info_.hardware_parameters["right.rear_enc_a"]);
+int rr_b = std::stoi(info_.hardware_parameters["right.rear_enc_b"]);
+
+
 right_track_ = std::make_unique<Track>(right_cfg);
+rf_ = std::make_unique<Encoder>(pi_, rf_a, rf_b);
+rr_ = std::make_unique<Encoder>(pi_, rr_a, rr_b);
 
+
+
+  LOG_IMPORTANTE(
+  logger,
+  "LEFT TRACK | RPM: %.1f | MAX RAD/S: %.2f | MAX ACCEL: %.2f | left_rad_per_tick_: %.5f",
+  left_track_->get_rpm_motor(),
+  left_track_->get_max_rad_s(),
+  left_track_->get_max_accel(),
+  left_rad_per_tick_);
 
   LOG_IMPORTANTE(logger,
-    "LEFT TRACK | RPM: %.1f | MAX RAD/S: %.2f | MAX ACCEL: %.2f",
-    left_track_->get_rpm_motor(),
-    left_track_->get_max_rad_s(),
-    left_track_->get_max_accel());
-
-  LOG_IMPORTANTE(logger,
-    "RIGHT TRACK | RPM: %.1f | MAX RAD/S: %.2f | MAX ACCEL: %.2f",
+    "RIGHT TRACK | RPM: %.1f | MAX RAD/S: %.2f | MAX ACCEL: %.2f | right_rad_per_tick_: %.5f",
     right_track_->get_rpm_motor(),
     right_track_->get_max_rad_s(),
-    right_track_->get_max_accel());
+    right_track_->get_max_accel(),
+    right_rad_per_tick_);
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -187,10 +221,21 @@ DiffDriveHW::export_command_interfaces()
 
 hardware_interface::return_type DiffDriveHW::read(
   const rclcpp::Time &,
-  const rclcpp::Duration &)
-{
-  //FALTA LLENAR
+  const rclcpp::Duration &){
+    auto logger = rclcpp::get_logger("DiffDriveHW");
+    lf_->update();
+    rf_->update();
 
+    int32_t lf_ticks = lf_->get_ticks();
+    int32_t rf_ticks = rf_->get_ticks();
+ 
+    static int c = 0;
+    c++;
+
+    if (c % 100 == 0)
+    {
+     RCLCPP_INFO(rclcpp::get_logger("DiffDriveHW"), "LF ticks: %d | RF ticks: %d", lf_ticks, rf_ticks);
+    }
   return hardware_interface::return_type::OK;
 }
 

@@ -35,6 +35,7 @@ hardware_interface::CallbackReturn ServoHW::on_init(
     servos_[i].us_max = std::stoi(joint.parameters.at("us_max"));
     servos_[i].zero_offset_rad = std::stod(joint.parameters.at("zero_offset_rad"));
     servos_[i].invert = joint.parameters.at("invert") == "true";
+    servos_[i].max_velocity = std::stod(joint.parameters.at("max_velocity"));
 
     RCLCPP_INFO(hw_logger, "Loaded joint %s | channel=%d | invert=%d",
       servos_[i].joint_name.c_str(),
@@ -121,24 +122,36 @@ bool ServoHW::driver_disconnect()
 hardware_interface::return_type ServoHW::read(
     const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-    for (size_t i = 0; i < servos_.size(); ++i) {
-    double state = goal_pos_[i];
-    if(servos_[i].invert){
-      state = state *-1;
-    }
-    current_pos_[i] = state;  // asumimos que la posición actual es la deseada
-}
     return hardware_interface::return_type::OK;
 }
 
 hardware_interface::return_type ServoHW::write(
-    const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+    const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
-    // Escribir los comandos al hardware
+    double dt = period.seconds();
     for (size_t i = 0; i < servos_.size(); ++i)
     {
-        servo_direct(i, goal_pos_[i]);
+        double goal = goal_pos_[i];
+        double current = current_pos_[i];
+
+        double error = goal - current;
+
+        double max_step = servos_[i].max_velocity * dt;
+
+        double next;
+
+        if (fabs(error) > max_step)
+        {
+            next = current + (error > 0 ? max_step : -max_step);
+        }
+        else
+        {
+            next = goal;
+        }
+
+        servo_direct(i, next);
     }
+
     return hardware_interface::return_type::OK;
 }
 

@@ -30,6 +30,7 @@ public:
     uint16_t us_max;
     double zero_offset_rad;
     bool invert;
+    double max_velocity;
   };
 
   hardware_interface::CallbackReturn on_init(

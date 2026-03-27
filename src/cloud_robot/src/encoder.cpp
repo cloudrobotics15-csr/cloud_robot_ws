@@ -20,51 +20,25 @@ Encoder::Encoder(int pi, int pin_a, int pin_b)
   last_a_ = gpio_read(pi_, pin_a_);
   last_b_ = gpio_read(pi_, pin_b_);
 
-  callback_ex(
-    pi_,
-    pin_a_,
-    EITHER_EDGE,
-    Encoder::callback,
-    this
-  );
-
-  callback_ex(
-    pi_,
-    pin_b_,
-    EITHER_EDGE,
-    Encoder::callback,
-    this
-  );
 }
 
-
-void Encoder::callback(
-  int /*pi*/,
-  unsigned /*gpio*/,
-  unsigned /*level*/,
-  uint32_t /*tick*/,
-  void * user)
+void Encoder::update()
 {
-  Encoder * enc =
-    static_cast<Encoder *>(user);
+  int a = gpio_read(pi_, pin_a_);
+  int b = gpio_read(pi_, pin_b_);
 
-  int a = gpio_read(enc->pi_, enc->pin_a_);
-  int b = gpio_read(enc->pi_, enc->pin_b_);
-
-  if (a == enc->last_a_ &&
-      b == enc->last_b_)
+  if (a == last_a_ && b == last_b_)
     return;
 
   if (a == b)
-    enc->ticks_++;
+    ticks_++;
   else
-    enc->ticks_--;
+    ticks_--;
 
-  enc->last_a_ = a;
-  enc->last_b_ = b;
+  last_a_ = a;
+  last_b_ = b;
 }
-
-
+ 
 int32_t Encoder::get_ticks() const
 {
   return ticks_.load();

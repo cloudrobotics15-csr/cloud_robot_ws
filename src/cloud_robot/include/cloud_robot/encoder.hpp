@@ -11,20 +11,14 @@ class Encoder
 public:
 
   Encoder(int pi, int pin_a, int pin_b);
+  
+  void update();
 
   int32_t get_ticks() const;
 
   void reset();
 
 private:
-
- static void callback(
-  int pi,
-  unsigned gpio,
-  unsigned level,
-  uint32_t tick,
-  void* userdata
-  );
 
   int pi_;
 

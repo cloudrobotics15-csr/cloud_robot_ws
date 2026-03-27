@@ -39,7 +39,7 @@ def generate_launch_description():
         arguments=[
             'joint_state_broadcaster',
             '--controller-manager', '/controller_manager',
-
+            "--controller-manager-timeout", "10"
         ],
         output='screen'
     )
@@ -50,6 +50,7 @@ def generate_launch_description():
         arguments=[
             'diff_drive_controller',
             '--controller-manager', '/controller_manager',
+            "--controller-manager-timeout", "10"
         ],
         output='screen'
     )
@@ -60,6 +61,7 @@ def generate_launch_description():
         arguments=[
             'servo_controller',
             '--controller-manager', '/controller_manager',
+            "--controller-manager-timeout", "10"
         ],
         output='screen'
     )

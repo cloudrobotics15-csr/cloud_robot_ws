@@ -9,6 +9,7 @@
 
 #include "rclcpp/macros.hpp"
 #include "cloud_robot/track.hpp"
+#include "cloud_robot/encoder.hpp"
 
 namespace cloud_robot
 {
@@ -54,6 +55,20 @@ private:
   std::unique_ptr<Track> left_track_;
   std::unique_ptr<Track> right_track_;
 
+  std::unique_ptr<Encoder> lf_;
+  std::unique_ptr<Encoder> lr_;
+  std::unique_ptr<Encoder> rf_;
+  std::unique_ptr<Encoder> rr_;
+
+  double left_rad_per_tick_;
+  double right_rad_per_tick_;
+
+  int32_t last_left_ticks_;
+  int32_t last_right_ticks_;
+
+  rclcpp::Time last_time_;
+
+  int print_counter_;
 };
 
 } // namespace cloud_robot
