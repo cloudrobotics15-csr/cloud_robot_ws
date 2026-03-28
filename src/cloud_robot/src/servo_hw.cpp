@@ -102,7 +102,7 @@ hardware_interface::CallbackReturn ServoHW::on_deactivate(
 // DRIVER CONNECTION
 bool ServoHW::driver_connect()
 {
-  port_ = "/dev/serial/by-id/usb-Pololu_Corporation_Pololu_Mini_Maestro_12-Channel_USB_Servo_Controller_00479740-if00";
+  port_ = "/dev/serial/by-id/usb-Pololu_Corporation_Pololu_Mini_Maestro_12-Channel_USB_Servo_Controller_00479691-if00";
   serial_fd_ = open(port_.c_str(), O_RDWR | O_NOCTTY);
   if (serial_fd_ < 0)
   {
