@@ -8,9 +8,9 @@
 #define LOG_IMPORTANTE(logger, fmt, ...) \
   RCLCPP_INFO(logger, "\033[1;35m" fmt "\033[0m", ##__VA_ARGS__)
 
+ 
 namespace cloud_robot
 {
-
 
 hardware_interface::CallbackReturn DiffDriveHW::on_init(
   const hardware_interface::HardwareInfo & info)
@@ -47,7 +47,6 @@ hardware_interface::CallbackReturn DiffDriveHW::on_configure(
   }
 
   RCLCPP_INFO(logger, "Connected to pigpio");
-
 
   //  LEFT CONFIG
 TrackConfig left_cfg;
@@ -88,9 +87,8 @@ int lr_a = std::stoi(info_.hardware_parameters["left.rear_enc_a"]);
 int lr_b = std::stoi(info_.hardware_parameters["left.rear_enc_b"]);
 
 left_track_ = std::make_unique<Track>(left_cfg);
-lf_ = std::make_unique<Encoder>(pi_, lf_a, lf_b);
+//lf_ = std::make_unique<Encoder>(pi_, lf_a, lf_b);
 lr_ = std::make_unique<Encoder>(pi_, lr_a, lr_b);
-
 
 //RIGHT CONFIG
 TrackConfig right_cfg;
@@ -132,8 +130,13 @@ int rr_b = std::stoi(info_.hardware_parameters["right.rear_enc_b"]);
 
 
 right_track_ = std::make_unique<Track>(right_cfg);
-rf_ = std::make_unique<Encoder>(pi_, rf_a, rf_b);
+//rf_ = std::make_unique<Encoder>(pi_, rf_a, rf_b);
 rr_ = std::make_unique<Encoder>(pi_, rr_a, rr_b);
+
+//encoder_manager_.add_encoder(lf_.get());
+//encoder_manager_.add_encoder(rf_.get());
+encoder_manager_.add_encoder(lr_.get());
+encoder_manager_.add_encoder(rr_.get());
 
 
 
@@ -163,7 +166,7 @@ hardware_interface::CallbackReturn DiffDriveHW::on_activate(
 
   left_track_->enable();
   right_track_->enable();
-
+  encoder_manager_.start();
   RCLCPP_INFO(logger, "Tracks enabled");
 
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -177,7 +180,7 @@ hardware_interface::CallbackReturn DiffDriveHW::on_deactivate(
 
   left_track_->disable();
   right_track_->disable();
-
+  encoder_manager_.stop();
   pigpio_stop(pi_);
 
   RCLCPP_INFO(logger, "Tracks disabled");
@@ -218,24 +221,56 @@ DiffDriveHW::export_command_interfaces()
 }
 
 
-
 hardware_interface::return_type DiffDriveHW::read(
   const rclcpp::Time &,
-  const rclcpp::Duration &){
-    auto logger = rclcpp::get_logger("DiffDriveHW");
-    lf_->update();
-    rf_->update();
+  const rclcpp::Duration &/*period*/){
+  auto logger = rclcpp::get_logger("DiffDriveHW");
 
-    int32_t lf_ticks = lf_->get_ticks();
-    int32_t rf_ticks = rf_->get_ticks();
- 
-    static int c = 0;
-    c++;
+  /*double dt = period.seconds();
 
-    if (c % 100 == 0)
-    {
-     RCLCPP_INFO(rclcpp::get_logger("DiffDriveHW"), "LF ticks: %d | RF ticks: %d", lf_ticks, rf_ticks);
-    }
+  // ===== TICKS =====
+  int32_t lr_ticks = lr_->get_ticks();
+  int32_t rr_ticks = rr_->get_ticks();
+
+  // ===== DELTA =====
+  int32_t delta_left = lr_ticks - last_left_ticks_;
+  int32_t delta_right = rr_ticks - last_right_ticks_;
+
+  // ===== GUARDAR =====
+  last_left_ticks_ = lr_ticks;
+  last_right_ticks_ = rr_ticks;
+
+  // ===== RAD =====
+  double delta_left_rad = delta_left * left_rad_per_tick_;
+  double delta_right_rad = delta_right * right_rad_per_tick_;
+
+  // ===== POSICIÓN =====
+  positions_[0] += delta_left_rad;
+  positions_[2] += delta_left_rad;
+
+  positions_[1] += delta_right_rad;
+  positions_[3] += delta_right_rad;
+
+  // ===== VELOCIDAD =====
+  velocities_[0] = delta_left_rad / dt;
+  velocities_[2] = delta_left_rad / dt;
+
+  velocities_[1] = delta_right_rad / dt;
+  velocities_[3] = delta_right_rad / dt;
+
+  // ===== DEBUG =====
+  print_counter_++;
+  if (print_counter_ >= 50)
+  {
+    RCLCPP_INFO(logger,
+      "LR: %d | RR: %d | L vel: %.3f | R vel: %.3f",
+      lr_ticks, rr_ticks,
+      velocities_[0], velocities_[1]);
+
+    print_counter_ = 0;
+  }*/
+    
+
   return hardware_interface::return_type::OK;
 }
 
