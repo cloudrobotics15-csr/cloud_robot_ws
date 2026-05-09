@@ -4,9 +4,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <algorithm>
+#include <cstring>  
+#include <iomanip> 
 
-namespace cloud_robot
-{
+namespace cloud_robot{
 
 static rclcpp::Logger hw_logger = rclcpp::get_logger("ServoHW");
 
@@ -22,7 +23,10 @@ hardware_interface::CallbackReturn ServoHW::on_init(
   size_t n = info.joints.size();
   servos_.resize(n);
   current_pos_.assign(n, 0.0);
+  current_pos_vis_.assign(n, 0.0);
   goal_pos_.assign(n, 0.0);
+  current_vel_.assign(n, 0.0);
+  last_us_.assign(n, 0);
 
   for (size_t i = 0; i < n; i++)
   {
@@ -36,11 +40,15 @@ hardware_interface::CallbackReturn ServoHW::on_init(
     servos_[i].zero_offset_rad = std::stod(joint.parameters.at("zero_offset_rad"));
     servos_[i].invert = joint.parameters.at("invert") == "true";
     servos_[i].max_velocity = std::stod(joint.parameters.at("max_velocity"));
+    servos_[i].max_acceleration = std::stod(joint.parameters.at("max_acceleration"));
 
-    RCLCPP_INFO(hw_logger, "Loaded joint %s | channel=%d | invert=%d",
-      servos_[i].joint_name.c_str(),
-      servos_[i].channel,
-      servos_[i].invert);
+   RCLCPP_INFO(hw_logger,
+    "Loaded joint %s | channel=%d | invert=%d | vel=%.2f ",
+    servos_[i].joint_name.c_str(),
+    servos_[i].channel,
+    servos_[i].invert,
+    servos_[i].max_velocity
+    );
   }
 
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -52,7 +60,7 @@ std::vector<hardware_interface::StateInterface> ServoHW::export_state_interfaces
   for (size_t i = 0; i < servos_.size(); ++i)
   {
     state_interfaces.emplace_back(hardware_interface::StateInterface(
-        servos_[i].joint_name, "position", &current_pos_[i]));
+        servos_[i].joint_name, "position", &current_pos_vis_[i]));
   }
   return state_interfaces;
 }
@@ -102,14 +110,24 @@ hardware_interface::CallbackReturn ServoHW::on_deactivate(
 // DRIVER CONNECTION
 bool ServoHW::driver_connect()
 {
-  port_ = "/dev/serial/by-id/usb-Pololu_Corporation_Pololu_Mini_Maestro_12-Channel_USB_Servo_Controller_00479691-if00";
-  serial_fd_ = open(port_.c_str(), O_RDWR | O_NOCTTY);
-  if (serial_fd_ < 0)
+  port_ = "/dev/ttyACM0";
+
+  for (int i = 0; i < 3; i++)
   {
-    RCLCPP_ERROR(hw_logger, "Cannot open port %s", port_.c_str());
-    return false;
+    serial_fd_ = open(port_.c_str(), O_RDWR | O_NOCTTY);
+    
+    if (serial_fd_ >= 0)
+    {
+      RCLCPP_INFO(hw_logger, "Connected to servo driver");
+      return true;
+    }
+
+    RCLCPP_WARN(hw_logger, "Port not ready, retrying... (%d)", i);
+    sleep(1);
   }
-  return true;
+
+  RCLCPP_ERROR(hw_logger, "Cannot open port %s", port_.c_str());
+  return false;
 }
 
 bool ServoHW::driver_disconnect()
@@ -124,43 +142,91 @@ hardware_interface::return_type ServoHW::read(
 {
     return hardware_interface::return_type::OK;
 }
-
 hardware_interface::return_type ServoHW::write(
     const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
     double dt = period.seconds();
+    if (dt <= 0.0) return hardware_interface::return_type::OK;
+
+    // LIMITAR FRECUENCIA A ~75 Hz
+    static double accum = 0.0;
+    accum += dt;
+
+    if (accum < 0.0133)
+        return hardware_interface::return_type::OK;
+
+    accum = 0.0;
+
     for (size_t i = 0; i < servos_.size(); ++i)
     {
-        double goal = goal_pos_[i];
-        double current = current_pos_[i];
+        const auto & s = servos_[i];
 
-        double error = goal - current;
+        double error = goal_pos_[i] - current_pos_[i];
+        double dist  = std::fabs(error);
+        int sign     = (error >= 0) ? 1 : -1;
 
-        double max_step = servos_[i].max_velocity * dt;
+        double v_brake  = std::sqrt(2.0 * s.max_acceleration * dist);
+        double v_target = std::min(s.max_velocity, v_brake);
 
-        double next;
+        double dv_max = s.max_acceleration * dt;
+        double v_cmd  = sign * v_target;
 
-        if (fabs(error) > max_step)
-        {
-            next = current + (error > 0 ? max_step : -max_step);
-        }
+        if (v_cmd > current_vel_[i] + dv_max)
+            current_vel_[i] += dv_max;
+        else if (v_cmd < current_vel_[i] - dv_max)
+            current_vel_[i] -= dv_max;
         else
+            current_vel_[i] = v_cmd;
+
+        double step = current_vel_[i] * dt;
+
+        if (std::fabs(step) > dist)
+            step = sign * dist;
+
+        current_pos_[i] += step;
+
+        // FILTRO
+        uint16_t new_us = cmd_rad_to_us(servos_[i], current_pos_[i]);
+
+        if (std::abs((int)new_us - (int)last_us_[i]) >= 5)
         {
-            next = goal;
+            servo_direct(i, current_pos_[i]);
         }
 
-        servo_direct(i, next);
+        current_pos_vis_[i] = current_pos_[i];
+
+        if (servos_[i].invert){
+          current_pos_vis_[i] = -current_pos_vis_[i];
+        }
     }
 
     return hardware_interface::return_type::OK;
 }
 
-
 bool ServoHW::driver_send(const std::vector<uint8_t>& data)
 {
   if (serial_fd_ < 0) return false;
+
   ssize_t written = ::write(serial_fd_, data.data(), data.size());
-  return written == static_cast<ssize_t>(data.size());
+
+  if (written < 0) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK)
+    {
+        RCLCPP_WARN(hw_logger, "Serial busy, skipping frame");
+        return false;
+    }
+
+    RCLCPP_ERROR(hw_logger, "Serial write error: errno=%d (%s)",
+                 errno, strerror(errno));
+    return false;
+  }
+
+  if (written != static_cast<ssize_t>(data.size())){ 
+    RCLCPP_WARN(hw_logger, "Partial write");
+    return false;
+  }
+
+  return true;
 }
 
 bool ServoHW::set_servo_us(uint8_t channel, uint16_t us)
@@ -175,8 +241,7 @@ bool ServoHW::set_servo_us(uint8_t channel, uint16_t us)
   return driver_send(cmd);
 }
 
-uint16_t ServoHW::cmd_rad_to_us(const Servo & s, double rad_cmd)
-{
+uint16_t ServoHW::cmd_rad_to_us(const Servo & s, double rad_cmd){
   if (s.invert) rad_cmd = -rad_cmd;
   rad_cmd = std::clamp(rad_cmd, s.rad_min, s.rad_max);
   double rad_real = rad_cmd + s.zero_offset_rad;
@@ -192,11 +257,12 @@ uint16_t ServoHW::cmd_rad_to_us(const Servo & s, double rad_cmd)
 
 void ServoHW::servo_direct(size_t i, double target_rad)
 {
-  uint16_t us = cmd_rad_to_us(servos_[i], target_rad);
-  set_servo_us(servos_[i].channel, us);
-  current_pos_[i] = target_rad;
-}
+    uint16_t us = cmd_rad_to_us(servos_[i], target_rad);
 
+    if (set_servo_us(servos_[i].channel, us)) {
+        last_us_[i] = us;
+    }
+}
 } // namespace cloud_robot
 
 PLUGINLIB_EXPORT_CLASS(
