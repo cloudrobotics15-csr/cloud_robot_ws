@@ -10,6 +10,7 @@
 #include "rclcpp/macros.hpp"
 #include "cloud_robot/track.hpp"
 #include "cloud_robot/encoder.hpp"
+#include "cloud_robot/encoder_manager.hpp"
 
 namespace cloud_robot
 {
@@ -44,6 +45,8 @@ public:
     const rclcpp::Time & time,
     const rclcpp::Duration & period) override;
 
+  EncoderManager encoder_manager_;
+
 private:
 
   int pi_;
@@ -65,6 +68,9 @@ private:
 
   int32_t last_left_ticks_;
   int32_t last_right_ticks_;
+
+  double left_pos_;
+  double right_pos_;
 
   rclcpp::Time last_time_;
 
