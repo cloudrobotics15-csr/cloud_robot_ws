@@ -31,6 +31,7 @@ public:
     double zero_offset_rad;
     bool invert;
     double max_velocity;
+    double max_acceleration;
   };
 
   hardware_interface::CallbackReturn on_init(
@@ -56,7 +57,10 @@ public:
 private:
   std::vector<Servo> servos_;
   std::vector<double> current_pos_;
+  std::vector<double> current_pos_vis_;
   std::vector<double> goal_pos_;
+  std::vector<double> current_vel_;
+  std::vector<uint16_t> last_us_;
 
   std::string port_;
   int serial_fd_ = -1;
